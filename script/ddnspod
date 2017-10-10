@@ -1,0 +1,141 @@
+#!/bin/sh /etc/rc.common
+#---------------------------------------------------------------- 
+# Shell Name：ddnspod 
+# Description：Plug-in startup script
+# Author：fireyy
+# E-mail: fireyy@gmail.com
+# Time：2017-10-10 09:50
+# Copyright © 2016 Misstar Tools. All rights reserved.
+#----------------------------------------------------------------*/
+. /etc/misstar/scripts/MTbase
+EXTRA_COMMANDS=" status  version dnsstatus dnsconfig"
+EXTRA_HELP="        status  Get shadowsocks status
+        version Get Misstar Tools Version"
+
+now=`date`
+
+
+die () {
+    echo $1
+}
+
+send_request() {
+	local agent="Ddnspod/1.0.0(fireyy@gmail.com)"
+    local inter="https://dnsapi.cn/${1:?'Info.Version'}"
+    local param="login_token=${ddnspod_token}&format=json&${2}"
+	curl -s -k $inter -X POST -F $param -A $agent
+}
+
+update(){
+	local recordRS recordCD recordIP
+	init=1
+	while [ '1' ]
+	do
+		now=`date "+%Y-%m-%d %H:%M:%S"`
+		if [ "$init" == '2' ];then
+			sleep $ddnspod_cycle
+		fi
+		init=2
+		ip=`$ddnspod_curl 2>&1` || die "$ip"
+		if [ "$?" -ne "0" ]
+		then
+		    uci set misstar.ddnspod.ddnspod_last_act="$now: get wan ip error"
+		    uci commit misstar
+		    continue
+		fi
+			
+		current_ip=`nslookup $ddnspod_name.$ddnspod_domain $ddnspod_dns 2>&1`
+		if [ "$?" -eq "0" ]
+		then
+		    current_ip=`echo "$current_ip" | grep 'Address 1' | tail -n1 | awk '{print $NF}'`
+		
+		    if [ "$ip" = "$current_ip" ]
+		    then
+		        uci set misstar.ddnspod.ddnspod_last_act="$now: skipped($ip)"
+		        uci commit misstar
+		        continue
+		    fi 
+		fi
+			
+		timestamp=`date -u "+%Y-%m-%dT%H%%3A%M%%3A%SZ"`
+
+		if [ "$ddnspod_domain_id" = "" ]
+		then
+			ddnspod_domain_id=$(send_request "Domain.Info" "domain=${ddnspod_domain}")
+			ddnspod_domain_id=$(echo $ddnspod_domain_id | sed 's/.*{"id":"\([0-9]*\)".*/\1/')
+		if
+		if [ "$ddnspod_record_id" = "" ]
+		then
+			ddnspod_record_id=$(send_request "Record.List" "domain_id=${ddnspod_domain_id}&sub_domain=${ddnspod_name}")
+			ddnspod_record_id=$(echo $ddnspod_record_id | sed 's/.*\[{"id":"\([0-9]*\)".*/\1/')
+		fi
+		if [ "$ddnspod_record_id" = "" ]
+		then
+		    echo "not found record"
+		else
+			recordRS=$(arApiPost "Record.Ddns" "domain_id=${ddnspod_domain_id}&record_id=${ddnspod_record_id}&sub_domain=${ddnspod_name}&record_type=A&value=${ip}&record_line=默认")
+			recordCD=$(echo $recordRS | sed 's/.*{"code":"\([0-9]*\)".*/\1/')
+			recordIP=$(echo $recordRS | sed 's/.*,"value":"\([0-9\.]*\)".*/\1/')
+		    echo "updated record $ddnspod_record_id"
+			if [ "$recordIP" = "$ip" ]; then
+				if [ "$recordCD" = "1" ]; then
+					echo $recordIP
+					return 0
+				fi
+				# Echo error message
+				echo $recordRS | sed 's/.*,"message":"\([^"]*\)".*/\1/'
+				return 1
+			else
+				echo "Update Failed! Please check your network."
+				return 1
+			fi
+		fi
+		
+		# save to file
+		if [ "$ddnspod_record_id" = "" ]; then
+		    # failed
+			uci set misstar.ddnspod.ddnspod_last_act="$now: failed"
+			uci commit misstar
+		else
+			uci set misstar.ddnspod.ddnspod_domain_id=$ddnspod_domain_id
+			uci set misstar.ddnspod.ddnspod_record_id=$ddnspod_record_id
+			uci set misstar.ddnspod.ddnspod_last_act="$now: success($ip)"
+			uci commit misstar
+		fi
+	done
+}
+
+start(){
+	appenable=$(uci get misstar.ddnspod.enable)
+	if [ "$appenable" = '0' ];then
+		echo "service ddnspod is disabeld!"
+		uci set misstar.ddnspod.ddnspod_last_act="$now: service ddnspod is disabeld!"
+    	uci commit misstar
+		exit
+	fi	
+	
+	ddnspod_dns=$(uci get misstar.ddnspod.ddnspod_dns)
+	ddnspod_name=$(uci get misstar.ddnspod.ddnspod_name)
+	ddnspod_domain=$(uci get misstar.ddnspod.ddnspod_domain)
+	ddnspod_token=$(uci get misstar.ddnspod.ddnspod_token)
+	ddnspod_cycle=$(uci get misstar.ddnspod.ddnspod_cycle)
+	ddnspod_curl="curl -s whatismyip.akamai.com"
+	
+		
+	[ "$ddnspod_dns" = "" ] && ddnspod_dns="223.5.5.5"
+	
+	update &
+}
+
+stop(){
+	killall ddnspod
+}
+
+status(){
+	result=$(ps | grep ddnspod | grep misstar | grep -v 'status' | grep -v 'grep' | wc -l)
+	if [ "$result" == '3' ];then
+		echo -e '0\c'
+	else
+		echo -e '1\c'
+	fi
+}

@@ -1,0 +1,9 @@
+App_enable=$(uci get misstar.ddnspod.enable)  #misstar-ddnspod
+if [ "$App_enable" = '1' ];then  #misstar-ddnspod
+	result1=$(ps | grep ddnspod | grep misstar | grep -v 'status' | grep -v 'grep' | wc -l)  #misstar-ddnspod
+	if [ "$result1" == "0" ]; then #misstar-ddnspod
+		MTlog 3 "Ddnspod Process state Error,Try to restart it..."  #misstar-ddnspod
+		/etc/misstar/applications/ddnspod/script/ddnspod stop  #misstar-ddnspod
+		/etc/misstar/applications/ddnspod/script/ddnspod start  #misstar-ddnspod
+	fi  #misstar-ddnspod
+fi #misstar-ddnspod
