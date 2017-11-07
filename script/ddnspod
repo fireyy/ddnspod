@@ -2,8 +2,6 @@
 #---------------------------------------------------------------- 
 # Shell Name：ddnspod 
 # Description：Plug-in startup script
-# Author：fireyy
-# E-mail: fireyy@gmail.com
 # Time：2017-10-10 09:50
 # Copyright © 2016 Misstar Tools. All rights reserved.
 #----------------------------------------------------------------*/
@@ -19,7 +17,7 @@ die () {
 }
 
 send_request() {
-    local agent="Ddnspod/1.0.0(fireyy@gmail.com)"
+    local agent="Ddnspod/1.0.0"
     local inter="https://dnsapi.cn/${1:?'Info.Version'}"
     local param="login_token=${ddnspod_token}&format=json&${2}"
     curl -s -k $inter -d $param -A $agent
